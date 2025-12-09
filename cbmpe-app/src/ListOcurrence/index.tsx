@@ -15,12 +15,18 @@ import { VITE_API_URL } from "../../config";
 interface Ocorrencia {
   id: number;
   nome: string;
-  roles: string[];
-  dataHoraOcorrido: string;
-  regiao: string;
-  status: string;
-  enderecoOcorrencia: string;
+  viatura: string;
+  grupamento: string;
+  local: string;
   numeroVitimas: number;
+  situacaoFinal: string;
+  recursosUtilizados: string;
+  enderecoOcorrencia: string;
+  descricao: string;
+  codigoIdentificacao: string;
+  cpf: string;
+  telefone: string;
+  dataRegistro: string;  
 }
 
 export default function ListOcurrence() {
@@ -69,6 +75,60 @@ export default function ListOcurrence() {
     o.nome.toLowerCase().includes(search.toLowerCase())
   );
 
+  const handleEditPress = (id: number) => {
+    const ocorrencia = ocorrencias.find((o) => o.id === id);
+    if (ocorrencia) {
+      Alert.alert("Editar", `Editando ocorrência: ${ocorrencia.nome}`);
+      // TODO: Navigate to edit screen or open edit modal
+    }
+  };
+
+  const handleDeletePress = (id: number) => {
+    Alert.alert(
+      "Confirmar Exclusão",
+      "Tem certeza que deseja deletar esta ocorrência?",
+      [
+        { text: "Cancelar", onPress: () => {}, style: "cancel" },
+        {
+          text: "Deletar",
+          onPress: async () => {
+            try {
+              const token = await AsyncStorage.getItem("token");
+              if (!token) {
+                Alert.alert("Erro", "Token não encontrado.");
+                return;
+              }
+
+              const tokenClean = token
+                .replace(/^"|"$/g, "")
+                .trim()
+                .replace(/^Bearer /, "");
+
+              const response = await fetch(
+                `${VITE_API_URL}/ocorrencias/${id}`,
+                {
+                  method: "DELETE",
+                  headers: { Authorization: `Bearer ${tokenClean}` },
+                }
+              );
+
+              if (!response.ok) {
+                throw new Error(`Erro ${response.status}`);
+              }
+
+              // Remove from state after successful deletion
+              setOcorrencias((prev) => prev.filter((o) => o.id !== id));
+              Alert.alert("Sucesso", "Ocorrência deletada com sucesso!");
+            } catch (err: any) {
+              Alert.alert("Erro", err.message || "Erro ao deletar ocorrência");
+            }
+          },
+          style: "destructive",
+        },
+      ]
+    );
+  };
+
   return (
     <View style={styles.mainScreen}>
       <Appbar.Header>
@@ -98,17 +158,15 @@ export default function ListOcurrence() {
       <ScrollView style={styles.scrollList}>
         {filteredOcorrencias.map((item) => (
           <View key={item.id} style={styles.lineRow}>
-            <View />
-
-            <View>
+            <View style={{ flex: 1 }}>
               <Text style={styles.personName}>{item.nome}</Text>
               <Text style={styles.smallText}>
                 Data:{" "}
-                {new Date(item.dataHoraOcorrido).toLocaleDateString("pt-BR")}
+                {new Date(item.dataRegistro).toLocaleDateString("pt-BR")}
               </Text>
               <Text style={styles.smallText}>
                 Hora:{" "}
-                {new Date(item.dataHoraOcorrido).toLocaleTimeString("pt-BR", {
+                {new Date(item.dataRegistro).toLocaleTimeString("pt-BR", {
                   hour: "2-digit",
                   minute: "2-digit",
                 })}
@@ -116,6 +174,29 @@ export default function ListOcurrence() {
               <Text style={styles.smallText}>
                 Endereço: {item.enderecoOcorrencia}
               </Text>
+              <Text style={styles.smallText}>
+                Vítimas: {item.numeroVitimas}
+              </Text>
+              <Text style={styles.smallText}>
+                Situação: {item.situacaoFinal}
+              </Text>
+            </View>
+
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginLeft: 10 }}>
+              <MaterialIcons 
+                name="edit" 
+                size={24} 
+                color="#d60027" 
+                onPress={() => handleEditPress(item.id)}
+              />
+
+              <MaterialIcons 
+                name="delete" 
+                size={24} 
+                color="#d60027" 
+                onPress={() => handleDeletePress(item.id)}
+                style={{ marginLeft: 10 }}
+              />
             </View>
           </View>
         ))}

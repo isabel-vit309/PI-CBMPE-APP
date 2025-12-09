@@ -61,46 +61,66 @@ export default function StepFive({ navigation }) {
     loadData();
   }, []);
 
-  async function handleFinish() {
+    async function handleFinish() {
     setLoading(true);
     try {
-      // Mapeamento igual ao web
+      
+      let token = await AsyncStorage.getItem("token");
+      
+      console.log("Token bruto:", token);
+      
+      if (!token || token === "" || token === "null") {
+        Alert.alert("Sessão expirada", "Faça login novamente.");
+        await AsyncStorage.removeItem("token");
+        navigation.navigate("Login");
+        setLoading(false);
+        return;
+      }
+      
+      
+      token = token.trim();
+      if (token.startsWith('"') && token.endsWith('"')) {
+        token = token.slice(1, -1);
+      }
+      if (token.startsWith("Bearer ")) {
+        token = token.slice(7);
+      }
+      
+      console.log("Token limpo:", token.substring(0, 30) + "...");
+      
+            
       const ocorrenciaData = {
-        roles: [stepOne.tipoOcorrencia], // igual ao web
         viatura: stepOne.viatura,
         grupamento: stepOne.agrupamentos,
-        status: stepTwo.situacaoFinal,
-        dataHoraOcorrido: stepOne.dataHora,
-        regiao: stepOne.local,
-        descricao: stepTwo.descricaoCaso,
-        recursosUtilizados: stepTwo.recursosUtilizados,
+        local: stepOne.local,
         numeroVitimas: parseInt(stepTwo.numeroVitimas || "0"),
-        enderecoOcorrencia: stepTwo.enderecoOcorrencia,
         situacaoFinal: stepTwo.situacaoFinal,
+        recursosUtilizados: stepTwo.recursosUtilizados,
+        enderecoOcorrencia: stepTwo.enderecoOcorrencia,
+        descricao: stepTwo.descricaoCaso,
         nome: stepFour.nome,
         codigoIdentificacao: stepFour.codigoId,
         cpf: stepFour.cpf,
         telefone: stepFour.telefone,
-        descricaoIdentificacao: stepFour.descricaoCaso,
-        imageUri: stepThree.imageUri || null,
-        assinatura: stepThree.signature || null,
       };
 
-      let token = await AsyncStorage.getItem("token");
-      if (!token) {
-        Alert.alert("Sessão expirada", "Faça login novamente.");
-        navigation.navigate("Login");
-        return;
-      }
-      token = token.replace(/^"|"$/g, "").trim();
-      if (token.startsWith("Bearer ")) token = token.slice(7);
+      console.log("Dados enviados:", JSON.stringify(ocorrenciaData, null, 2));
+      console.log("URL:", `${VITE_API_URL}/ocorrencias`);
+      console.log("Header Authorization:", `Bearer ${token.substring(0, 20)}...`);
 
-      await axios.post(`${VITE_API_URL}/ocorrencias`, ocorrenciaData, {
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-      });
+      const response = await axios.post(
+        `${VITE_API_URL}/ocorrencias`,
+        ocorrenciaData,
+        {
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          timeout: 10000,
+        }
+      );
+
+      console.log("Resposta da API:", response.data);
 
       await AsyncStorage.multiRemove([
         "stepOneData",
@@ -112,25 +132,26 @@ export default function StepFive({ navigation }) {
       Alert.alert("Sucesso", "Ocorrência registrada com sucesso!");
       navigation.navigate("StepSix");
     } catch (error) {
-      console.error("Erro detalhado ao enviar ocorrência:", error);
+      console.error("Erro completo:", {
+        status: error.response?.status,
+        message: error.response?.data?.message,
+        data: error.response?.data,
+        fullError: error.message,
+      });
+
       if (error.response) {
-        if (error.response.status === 401 || error.response.status === 403) {
-          if (
-            error.response.data?.message?.includes("acesso negado") ||
-            error.response.data?.message?.includes("Access Denied")
-          ) {
-            Alert.alert(
-              "Acesso negado",
-              "Seu usuário não tem permissão para registrar ocorrências."
-            );
-          } else {
-            Alert.alert(
-              "Sessão expirada ou token inválido",
-              "Faça login novamente."
-            );
-            await AsyncStorage.removeItem("token");
-            navigation.navigate("Login");
-          }
+        if (error.response.status === 401) {
+          Alert.alert(
+            "Token expirado",
+            "Faça login novamente para continuar."
+          );
+          await AsyncStorage.removeItem("token");
+          navigation.navigate("Login");
+        } else if (error.response.status === 403) {
+          Alert.alert(
+            "Acesso negado",
+            "Seu usuário não tem permissão para registrar ocorrências."
+          );
         } else if (error.response.status === 400) {
           Alert.alert(
             "Dados inválidos",
@@ -138,15 +159,12 @@ export default function StepFive({ navigation }) {
           );
         } else {
           Alert.alert(
-            "Erro ao registrar ocorrência",
-            error.response.data?.message || error.message
+            "Erro",
+            error.response.data?.message || "Erro ao registrar ocorrência"
           );
         }
       } else if (error.request) {
-        Alert.alert(
-          "Erro de conexão",
-          "Não foi possível contactar o servidor."
-        );
+        Alert.alert("Erro de conexão", "Não foi possível contactar o servidor.");
       } else {
         Alert.alert("Erro", error.message);
       }
