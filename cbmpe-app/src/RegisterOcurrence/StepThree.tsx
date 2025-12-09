@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   View,
   StyleSheet,
@@ -6,33 +6,101 @@ import {
   Image,
   Alert,
   TouchableOpacity,
+  Text as RNText,
 } from "react-native";
-import { Text, Button } from "react-native-paper";
+import { Text, Button, Appbar } from "react-native-paper";
 import Signature from "react-native-signature-canvas";
 import * as ImagePicker from "expo-image-picker";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useForm } from "react-hook-form";
+import { Video } from "expo-av";
 
 export default function StepThree({ navigation }) {
+  const signatureRef = useRef(null);
+  const [mediaUri, setMediaUri] = useState(null);
+  const [mediaType, setMediaType] = useState(null); // "image" ou "video"
   const [signature, setSignature] = useState(null);
-  const [imageUri, setImageUri] = useState(null);
+  const [scrollEnabled, setScrollEnabled] = useState(true);
 
-  // Função para upload de imagem com opção de câmera ou galeria
-  const handleUpload = async () => {
-    Alert.alert("Selecionar imagem", "Escolha uma opção", [
+  const {
+    handleSubmit,
+    setError,
+    clearErrors,
+    formState: { errors },
+  } = useForm();
+
+  useEffect(() => {
+    loadSavedData();
+  }, []);
+
+  const loadSavedData = async () => {
+    try {
+      const savedData = await AsyncStorage.getItem("stepThreeData");
+      if (savedData) {
+        const data = JSON.parse(savedData);
+        if (data.mediaUri) setMediaUri(data.mediaUri);
+        if (data.mediaType) setMediaType(data.mediaType);
+        if (data.signature) setSignature(data.signature);
+      }
+    } catch (error) {
+      console.log("Erro ao carregar dados:", error);
+    }
+  };
+
+  const saveData = async () => {
+    try {
+      await AsyncStorage.setItem(
+        "stepThreeData",
+        JSON.stringify({ mediaUri, mediaType, signature })
+      );
+      console.log("StepThree salvo!");
+    } catch (error) {
+      console.log("Erro ao salvar dados:", error);
+    }
+  };
+
+  useEffect(() => {
+    if (mediaUri || signature) saveData();
+  }, [mediaUri, signature]);
+
+  async function handleUpload() {
+    Alert.alert("Selecionar mídia", "Escolha uma opção", [
       {
-        text: "Câmera",
+        text: "Tirar Foto",
         onPress: async () => {
           const permission = await ImagePicker.requestCameraPermissionsAsync();
           if (permission.status !== "granted") {
-            alert("Permissão para acessar a câmera negada!");
+            alert("Permissão negada!");
             return;
           }
-          let result = await ImagePicker.launchCameraAsync({
+          const result = await ImagePicker.launchCameraAsync({
             mediaTypes: ImagePicker.MediaTypeOptions.Images,
-            allowsEditing: true,
-            quality: 1,
+            quality: 0.8,
           });
           if (!result.canceled) {
-            setImageUri(result.assets[0].uri);
+            setMediaUri(result.assets[0].uri);
+            setMediaType("image");
+            clearErrors("media");
+          }
+        },
+      },
+      {
+        text: "Gravar Vídeo",
+        onPress: async () => {
+          const permission = await ImagePicker.requestCameraPermissionsAsync();
+          if (permission.status !== "granted") {
+            alert("Permissão negada!");
+            return;
+          }
+          const result = await ImagePicker.launchCameraAsync({
+            mediaTypes: ImagePicker.MediaTypeOptions.Videos,
+            videoMaxDuration: 15, // segundos
+            quality: 0.8,
+          });
+          if (!result.canceled) {
+            setMediaUri(result.assets[0].uri);
+            setMediaType("video");
+            clearErrors("media");
           }
         },
       },
@@ -42,40 +110,73 @@ export default function StepThree({ navigation }) {
           const permission =
             await ImagePicker.requestMediaLibraryPermissionsAsync();
           if (permission.status !== "granted") {
-            alert("Permissão para acessar a galeria negada!");
+            alert("Permissão negada!");
             return;
           }
-          let result = await ImagePicker.launchImageLibraryAsync({
-            mediaTypes: ImagePicker.MediaTypeOptions.Images,
-            allowsEditing: true,
-            quality: 1,
+          const result = await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ImagePicker.MediaTypeOptions.All,
+            quality: 0.8,
           });
           if (!result.canceled) {
-            setImageUri(result.assets[0].uri);
+            setMediaUri(result.assets[0].uri);
+            setMediaType(result.assets[0].type); // "image" ou "video"
+            clearErrors("media");
           }
         },
       },
       { text: "Cancelar", style: "cancel" },
     ]);
-  };
+  }
 
-  // Assinatura digital
-  const handleSignature = (signature) => {
-    setSignature(signature);
-    alert("Assinatura salva!");
-  };
+  function handleSignature(sig) {
+    setSignature(sig);
+    clearErrors("signature");
+  }
+
+  function handleBegin() {
+    setScrollEnabled(false);
+  }
+
+  function handleEnd() {
+    setScrollEnabled(true);
+    if (signatureRef.current) {
+      signatureRef.current.readSignature();
+    }
+  }
+
+  async function onSubmit() {
+    let hasErrors = false;
+    if (!mediaUri) {
+      setError("media", { message: "Você deve enviar uma imagem ou vídeo." });
+      hasErrors = true;
+    }
+    if (!signature) {
+      setError("signature", { message: "A assinatura é obrigatória." });
+      hasErrors = true;
+    }
+    if (hasErrors) return;
+    await saveData();
+    navigation.navigate("StepFour", { mediaUri, mediaType, signature });
+  }
+
+  function handleBack() {
+    navigation.goBack();
+  }
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
+      <Appbar.Header>
         <Image
           source={require("../img/logo.png")}
           style={styles.logo}
           resizeMode="contain"
         />
-      </View>
-      <ScrollView contentContainerStyle={styles.content}>
-        <View></View>
+      </Appbar.Header>
+      <ScrollView
+        contentContainerStyle={{ ...styles.content, paddingBottom: 80 }}
+        showsVerticalScrollIndicator={false}
+        scrollEnabled={scrollEnabled}
+      >
         <Text style={styles.title}>Registro de ocorrência</Text>
         <View style={styles.stepCard}>
           <View style={styles.stepRow}>
@@ -86,34 +187,37 @@ export default function StepThree({ navigation }) {
           </View>
           <View style={styles.redBar} />
         </View>
+
         <View style={styles.uploadCard}>
-          <Text style={styles.uploadTitle}>Faça upload de imagens</Text>
-          <Text style={styles.uploadSubtitle}>
-            Formatos suportados: SVG, JPG, PNG (10MB)
+          <Text style={styles.uploadTitle}>
+            Faça upload de imagens ou vídeos
           </Text>
-          {imageUri ? (
+          <Text style={styles.uploadSubtitle}>
+            Formatos suportados: SVG, JPG, PNG, MP4 (10MB)
+          </Text>
+          {mediaUri ? (
             <TouchableOpacity onPress={handleUpload} style={{ marginTop: 10 }}>
-              <Image
-                source={{ uri: imageUri }}
-                style={{
-                  width: 120,
-                  height: 120,
-                  borderRadius: 8,
-                  borderWidth: 1,
-                  borderColor: "#E6003A",
-                }}
-                resizeMode="cover"
-              />
-              <Text
-                style={{
-                  color: "#E6003A",
-                  textAlign: "center",
-                  marginTop: 4,
-                  fontSize: 12,
-                }}
-              >
-                Trocar imagem
-              </Text>
+              {mediaType === "image" ? (
+                <Image
+                  source={{ uri: mediaUri }}
+                  style={styles.previewImg}
+                  resizeMode="cover"
+                />
+              ) : (
+                <View style={styles.videoPreviewContainer}>
+                  <Video
+                    source={{ uri: mediaUri }}
+                    rate={1.0}
+                    volume={1.0}
+                    isMuted={false}
+                    shouldPlay={false}
+                    isLooping
+                    style={styles.previewImg}
+                    useNativeControls
+                  />
+                </View>
+              )}
+              <Text style={styles.changeImgText}>Trocar mídia</Text>
             </TouchableOpacity>
           ) : (
             <Button
@@ -122,29 +226,58 @@ export default function StepThree({ navigation }) {
               style={styles.uploadBtn}
               textColor="#E6003A"
             >
-              Selecionar imagem
+              Selecionar mídia
             </Button>
           )}
+          {errors.media?.message && (
+            <RNText style={styles.errorText}>
+              {String(errors.media.message)}
+            </RNText>
+          )}
         </View>
+
         <Text style={styles.assinaturaLabel}>Assinatura digital</Text>
         <View style={styles.signatureBox}>
           <Signature
+            ref={signatureRef}
             onOK={handleSignature}
+            onBegin={handleBegin}
+            onEnd={handleEnd}
             descriptionText=""
             clearText="Limpar"
             confirmText="Salvar"
-            webStyle={` .m-signature-pad--footer {display: none; margin: 0px;} `}
             autoClear={false}
             backgroundColor="#fff"
             penColor="black"
+            webStyle={`
+              .m-signature-pad { box-shadow: none; border: none; }
+              .m-signature-pad--footer { display: flex; justify-content: space-between; padding: 8px 10px; }
+              .m-signature-pad--footer button { background-color: #E6003A; color: #fff; padding: 6px 12px; border-radius: 6px; border: none; font-weight: 600; }
+              .m-signature-pad--footer .button-clear { background-color: #ccc; color: #222; }
+            `}
+            style={{ flex: 1 }}
           />
         </View>
-        <View style={{ alignItems: "flex-end", marginTop: 10, width: "100%" }}>
+        {errors.signature?.message && (
+          <RNText style={styles.errorText}>
+            {String(errors.signature.message)}
+          </RNText>
+        )}
+
+        <View style={styles.btnsRow}>
+          <Button
+            mode="text"
+            style={styles.button}
+            textColor="#000"
+            onPress={handleBack}
+          >
+            Voltar
+          </Button>
+
           <Button
             mode="contained"
-            onPress={() => alert("Avançar")}
-            style={styles.avancarBtn}
-            labelStyle={{ color: "#fff", fontWeight: "bold" }}
+            style={[styles.button, { backgroundColor: "#E6003A" }]}
+            onPress={handleSubmit(onSubmit)}
           >
             Continuar
           </Button>
@@ -156,27 +289,13 @@ export default function StepThree({ navigation }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#F6F7FA" },
-  header: {
-    backgroundColor: "#fff",
-    paddingTop: 18,
-    paddingBottom: 8,
-    paddingLeft: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: "#eee",
-  },
   logo: { width: 60, height: 28 },
-  content: {
-    padding: 12,
-    alignItems: "center",
-    marginTop: 25,
-  },
+  content: { padding: 12, alignItems: "center", marginTop: 25 },
   title: {
     fontWeight: "bold",
     fontSize: 22,
     marginBottom: 10,
     color: "#222",
-    marginLeft: 4,
-    marginTop: 4,
     alignSelf: "flex-start",
   },
   stepCard: {
@@ -185,17 +304,9 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: 10,
     marginBottom: 16,
-    borderWidth: 0,
-    elevation: 0,
-    position: "relative",
     width: "100%",
   },
-  stepRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 2,
-    marginLeft: 2,
-  },
+  stepRow: { flexDirection: "row", alignItems: "center" },
   circle: {
     width: 18,
     height: 18,
@@ -212,7 +323,7 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     backgroundColor: "#E6003A",
   },
-  stepText: { fontWeight: "500", color: "#222", fontSize: 14 },
+  stepText: { fontSize: 14, color: "#222" },
   redBar: {
     height: 3,
     backgroundColor: "#E6003A",
@@ -231,7 +342,7 @@ const styles = StyleSheet.create({
     borderColor: "#eee",
     width: "100%",
   },
-  uploadTitle: { fontWeight: "bold", color: "#E6003A", marginBottom: 2 },
+  uploadTitle: { fontWeight: "bold", color: "#E6003A" },
   uploadSubtitle: { color: "#888", fontSize: 12 },
   uploadBtn: {
     marginTop: 10,
@@ -239,27 +350,60 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: 6,
   },
+  previewImg: {
+    width: 120,
+    height: 120,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#E6003A",
+  },
+  videoPreviewContainer: {
+    width: 120,
+    height: 120,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#E6003A",
+    overflow: "hidden",
+    backgroundColor: "#000",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  changeImgText: {
+    color: "#E6003A",
+    textAlign: "center",
+    marginTop: 4,
+    fontSize: 12,
+  },
   assinaturaLabel: {
     fontWeight: "500",
     color: "#222",
     marginBottom: 6,
-    marginLeft: 2,
     alignSelf: "flex-start",
   },
   signatureBox: {
     backgroundColor: "#fff",
     borderRadius: 8,
-    minHeight: 100,
-    height: 170,
+    height: 200,
     marginBottom: 20,
-    overflow: "hidden",
+    overflow: "visible",
     width: "100%",
   },
-  avancarBtn: {
-    backgroundColor: "#E6003A",
-    borderRadius: 7,
-    width: "45%",
-    alignSelf: "flex-end",
-    marginTop: 35,
+  errorText: {
+    color: "#E6003A",
+    alignSelf: "flex-start",
+    marginTop: 10,
+    fontSize: 12,
+  },
+  buttonContainer: { width: "100%", alignItems: "flex-end", marginTop: 10 },
+  button: {
+    width: "48%",
+    alignSelf: "center",
+  },
+  btnsRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    width: "90%",
+    alignSelf: "center",
+    marginTop: 20,
   },
 });

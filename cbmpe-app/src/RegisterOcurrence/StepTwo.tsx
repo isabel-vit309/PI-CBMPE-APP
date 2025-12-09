@@ -1,11 +1,19 @@
-import React, { useState } from "react";
-import { View, StyleSheet, ScrollView, Platform, TouchableWithoutFeedback, Image } from "react-native";
+import React, { useState, useEffect } from "react";
+import {
+  View,
+  StyleSheet,
+  ScrollView,
+  Platform,
+  TouchableWithoutFeedback,
+  Image,
+} from "react-native";
 import { Text, TextInput, Button, Appbar, Menu } from "react-native-paper";
 import { useForm, Controller } from "react-hook-form";
 import { yupResolver } from "@hookform/resolvers/yup";
 import * as yup from "yup";
-import { MaterialCommunityIcons } from '@expo/vector-icons';
-import * as Location from 'expo-location';
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { MaterialCommunityIcons } from "@expo/vector-icons";
+import * as Location from "expo-location";
 
 const situacoes = [
   { label: "Pendente", value: "Pendente" },
@@ -14,8 +22,12 @@ const situacoes = [
 ];
 
 const schema = yup.object({
-  recursosUtilizados: yup.string().required("Recursos utilizados é obrigatório"),
-  enderecoOcorrencia: yup.string().required("Endereço da ocorrência é obrigatório"),
+  recursosUtilizados: yup
+    .string()
+    .required("Recursos utilizados é obrigatório"),
+  enderecoOcorrencia: yup
+    .string()
+    .required("Endereço da ocorrência é obrigatório"),
   descricaoCaso: yup.string().required("Descrição do caso é obrigatória"),
   numeroVitimas: yup
     .string()
@@ -29,7 +41,13 @@ export default function StepTwo({ navigation }) {
   const [menuVisible, setMenuVisible] = useState(false);
   const [loadingEndereco, setLoadingEndereco] = useState(false);
 
-  const { control, handleSubmit, formState: { errors }, setValue } = useForm({
+  const {
+    control,
+    handleSubmit,
+    formState: { errors },
+    setValue,
+    watch,
+  } = useForm({
     resolver: yupResolver(schema),
     defaultValues: {
       recursosUtilizados: "",
@@ -40,67 +58,118 @@ export default function StepTwo({ navigation }) {
     },
   });
 
-  const onSubmit = (data) => {
-    navigation.navigate('StepThree', { formData: data });
-  };
+  useEffect(() => {
+    AsyncStorage.getItem("stepTwoData").then((saved) => {
+      if (saved) {
+        let data = JSON.parse(saved);
+        if (data.recursosUtilizados)
+          setValue("recursosUtilizados", data.recursosUtilizados);
+        if (data.enderecoOcorrencia)
+          setValue("enderecoOcorrencia", data.enderecoOcorrencia);
+        if (data.descricaoCaso) setValue("descricaoCaso", data.descricaoCaso);
+        if (data.numeroVitimas) setValue("numeroVitimas", data.numeroVitimas);
+        if (data.situacaoFinal) setValue("situacaoFinal", data.situacaoFinal);
+      }
+    });
+  }, []);
 
-  const handleBack = () => {
+  const watchAll = watch();
+  useEffect(() => {
+    AsyncStorage.setItem("stepTwoData", JSON.stringify(watchAll));
+  }, [watchAll]);
+
+  function onSubmit(data) {
+    AsyncStorage.setItem("stepTwoData", JSON.stringify(data));
+    navigation.navigate("StepThree", { formData: data });
+  }
+
+  function handleBack() {
     navigation.goBack();
-  };
+  }
 
-  // Função para buscar localização e endereço
-  const handleEnderecoPress = async () => {
-    try {
-      setLoadingEndereco(true);
-      let { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') {
-        alert('Permissão de localização negada!');
+  function handleEnderecoPress() {
+    setLoadingEndereco(true);
+    Location.requestForegroundPermissionsAsync().then(({ status }) => {
+      if (status !== "granted") {
+        alert("Permissão de localização negada!");
         setLoadingEndereco(false);
         return;
       }
-      let location = await Location.getCurrentPositionAsync({});
-      let [address] = await Location.reverseGeocodeAsync({
-        latitude: location.coords.latitude,
-        longitude: location.coords.longitude,
-      });
-      if (address) {
-        const enderecoFormatado = `${address.street || ''}, ${address.subregion || ''} - ${address.city || ''}, ${address.region || ''}`;
-        setValue("enderecoOcorrencia", enderecoFormatado, { shouldValidate: true });
-      }
-    } catch (e) {
-      alert('Erro ao obter localização!');
-    } finally {
-      setLoadingEndereco(false);
-    }
-  };
+      Location.getCurrentPositionAsync({})
+        .then((location) => {
+          Location.reverseGeocodeAsync({
+            latitude: location.coords.latitude,
+            longitude: location.coords.longitude,
+          })
+            .then(([address]) => {
+              if (address) {
+                const enderecoFormatado = `${address.street || ""}, ${
+                  address.subregion || ""
+                } - ${address.city || ""}, ${address.region || ""}`;
+                setValue("enderecoOcorrencia", enderecoFormatado, {
+                  shouldValidate: true,
+                });
+              }
+              setLoadingEndereco(false);
+            })
+            .catch(() => {
+              alert("Erro ao obter endereço!");
+              setLoadingEndereco(false);
+            });
+        })
+        .catch(() => {
+          alert("Erro ao obter localização!");
+          setLoadingEndereco(false);
+        });
+    });
+  }
 
   return (
-    <View style={styles.container}>
+    <View style={styles.bigScreen}>
       <Appbar.Header>
-        <Image source={require('../img/logo.png')} style={{ width: 75, height: 40, marginLeft: 10 }} resizeMode="contain" />
+        <Image
+          source={require("../img/logo.png")}
+          style={{ width: 75, height: 40, marginLeft: 10 }}
+          resizeMode="contain"
+        />
       </Appbar.Header>
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <Text style={[styles.title, { fontSize: 24 }]}>Registro de Ocorrência</Text>
-        <View style={styles.formCard}>
-          <View style={styles.redBar} />
-          <View style={styles.stepRow}>
-            <MaterialCommunityIcons name="progress-clock" size={22} color="#E6003A" style={{ marginRight: 8 }} />
-            <Text style={styles.stepText}>2 / 5 • Dados complementares</Text>
+      <ScrollView
+        contentContainerStyle={styles.allContent}
+        showsVerticalScrollIndicator={false}
+      >
+        <Text style={[styles.bigTitle, { fontSize: 24 }]}>
+          Registro de Ocorrência
+        </Text>
+        <View style={styles.whiteBox}>
+          <View style={styles.redLine} />
+          <View style={styles.topStepRow}>
+            <MaterialCommunityIcons
+              name="progress-clock"
+              size={22}
+              color="#E6003A"
+              style={{ marginRight: 8 }}
+            />
+            <Text style={styles.smallStepText}>
+              2 / 5 • Dados complementares
+            </Text>
           </View>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', width: '90%', alignSelf: 'center' }}>
+          <View style={styles.rowGroup}>
             <Controller
               control={control}
               name="numeroVitimas"
-              render={({ field: { value, onChange }, fieldState: { error } }) => (
+              render={({
+                field: { value, onChange },
+                fieldState: { error },
+              }) => (
                 <View style={{ flex: 1, marginRight: 6 }}>
                   <TextInput
                     label="Número de vítimas*"
                     value={value?.toString()}
                     onChangeText={onChange}
                     keyboardType="numeric"
-                    style={styles.input}
+                    style={styles.inputBox}
                   />
-                  {error && <Text style={styles.error}>{error.message}</Text>}
+                  {error && <Text style={styles.errTiny}>{error.message}</Text>}
                 </View>
               )}
             />
@@ -109,12 +178,14 @@ export default function StepTwo({ navigation }) {
               name="situacaoFinal"
               render={({ field: { value }, fieldState: { error } }) => (
                 <View style={{ flex: 1, marginLeft: 6 }}>
-                  <TouchableWithoutFeedback onPress={() => setMenuVisible(true)}>
+                  <TouchableWithoutFeedback
+                    onPress={() => setMenuVisible(true)}
+                  >
                     <View pointerEvents="box-only">
                       <TextInput
                         label="Situação final*"
                         value={value}
-                        style={styles.input}
+                        style={styles.inputBox}
                         editable={false}
                         right={<TextInput.Icon icon="menu-down" />}
                         pointerEvents="none"
@@ -131,14 +202,16 @@ export default function StepTwo({ navigation }) {
                       <Menu.Item
                         key={item.value}
                         onPress={() => {
-                          setValue("situacaoFinal", item.value, { shouldValidate: true });
+                          setValue("situacaoFinal", item.value, {
+                            shouldValidate: true,
+                          });
                           setMenuVisible(false);
                         }}
                         title={item.label}
                       />
                     ))}
                   </Menu>
-                  {error && <Text style={styles.error}>{error.message}</Text>}
+                  {error && <Text style={styles.errTiny}>{error.message}</Text>}
                 </View>
               )}
             />
@@ -147,14 +220,14 @@ export default function StepTwo({ navigation }) {
             control={control}
             name="recursosUtilizados"
             render={({ field: { value, onChange }, fieldState: { error } }) => (
-              <View style={styles.inputWrapper}>
+              <View style={styles.boxSpace}>
                 <TextInput
                   label="Recursos utilizados*"
                   value={value}
                   onChangeText={onChange}
-                  style={styles.input}
+                  style={styles.inputBox}
                 />
-                {error && <Text style={styles.error}>{error.message}</Text>}
+                {error && <Text style={styles.errTiny}>{error.message}</Text>}
               </View>
             )}
           />
@@ -162,21 +235,25 @@ export default function StepTwo({ navigation }) {
             control={control}
             name="enderecoOcorrencia"
             render={({ field: { value, onChange }, fieldState: { error } }) => (
-              <View style={styles.inputWrapper}>
+              <View style={styles.boxSpace}>
                 <TouchableWithoutFeedback onPress={handleEnderecoPress}>
                   <View pointerEvents="box-only">
                     <TextInput
                       label="Endereço da ocorrência*"
                       value={value}
                       onChangeText={onChange}
-                      style={styles.input}
+                      style={styles.inputBox}
                       editable={false}
-                      right={<TextInput.Icon icon={loadingEndereco ? "loading" : "map-marker"} />}
+                      right={
+                        <TextInput.Icon
+                          icon={loadingEndereco ? "loading" : "map-marker"}
+                        />
+                      }
                       placeholder="Clique para preencher automaticamente"
                     />
                   </View>
                 </TouchableWithoutFeedback>
-                {error && <Text style={styles.error}>{error.message}</Text>}
+                {error && <Text style={styles.errTiny}>{error.message}</Text>}
               </View>
             )}
           />
@@ -184,24 +261,33 @@ export default function StepTwo({ navigation }) {
             control={control}
             name="descricaoCaso"
             render={({ field: { value, onChange }, fieldState: { error } }) => (
-              <View style={styles.inputWrapper}>
+              <View style={styles.boxSpace}>
                 <TextInput
                   label="Descrição do caso*"
                   value={value}
                   onChangeText={onChange}
                   multiline
                   numberOfLines={4}
-                  style={[styles.input, { minHeight: 80 }]}
+                  style={[styles.inputBox, { minHeight: 80 }]}
                 />
-                {error && <Text style={styles.error}>{error.message}</Text>}
+                {error && <Text style={styles.errTiny}>{error.message}</Text>}
               </View>
             )}
           />
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', width: '90%', alignSelf:'center', marginTop: 20 }}>
-            <Button mode="text" style={[styles.button]} textColor="#000" onPress={handleBack}>
+          <View style={styles.rowBtns}>
+            <Button
+              mode="text"
+              style={styles.btnSmall}
+              textColor="#000"
+              onPress={handleBack}
+            >
               Voltar
             </Button>
-            <Button mode="contained" style={[styles.button, { backgroundColor:'#E6003A' }]} onPress={handleSubmit(onSubmit)}>
+            <Button
+              mode="contained"
+              style={[styles.btnSmall, { backgroundColor: "#E6003A" }]}
+              onPress={handleSubmit(onSubmit)}
+            >
               Continuar
             </Button>
           </View>
@@ -212,19 +298,21 @@ export default function StepTwo({ navigation }) {
 }
 
 const styles = StyleSheet.create({
-  container: {
+  bigScreen: {
     flex: 1,
     backgroundColor: "#F6F7FA",
   },
-  content: {
+
+  allContent: {
     flexGrow: 1,
     padding: 20,
     justifyContent: "center",
-    alignItems: 'center',
+    alignItems: "center",
   },
-  formCard: {
-    width: '100%',
-    backgroundColor: '#fff',
+
+  whiteBox: {
+    width: "100%",
+    backgroundColor: "#fff",
     borderRadius: 8,
     marginTop: 16,
     paddingBottom: 24,
@@ -239,52 +327,75 @@ const styles = StyleSheet.create({
         elevation: 4,
       },
     }),
-    position: 'relative',
-    overflow: 'hidden',
+    position: "relative",
+    overflow: "hidden",
   },
-  redBar: {
+
+  redLine: {
     height: 4,
-    backgroundColor: '#E6003A',
-    width: '100%',
-    position: 'absolute',
+    backgroundColor: "#E6003A",
+    width: "100%",
+    position: "absolute",
     top: 0,
     left: 0,
     zIndex: 2,
   },
-  stepRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+
+  topStepRow: {
+    flexDirection: "row",
+    alignItems: "center",
     marginTop: 16,
     marginBottom: 16,
     marginLeft: 16,
-    alignSelf: 'flex-start',
+    alignSelf: "flex-start",
   },
-  title: {
+
+  smallStepText: {
+    fontSize: 14,
+    color: "#444",
+    fontWeight: "500",
+  },
+
+  bigTitle: {
     fontSize: 22,
     fontWeight: "bold",
     marginBottom: 20,
-    alignSelf:'flex-start'
+    alignSelf: "flex-start",
   },
-  stepText: {
-    fontSize: 14,
-    color: "#444",
-    fontWeight:'500'
-  },
-  inputWrapper: {
+
+  boxSpace: {
     width: "90%",
     marginBottom: 12,
-    alignSelf:'center'
+    alignSelf: "center",
   },
-  input: {
+
+  inputBox: {
     backgroundColor: "#fff",
   },
-  error: {
+
+  errTiny: {
     color: "#E6003A",
     fontSize: 13,
     marginTop: 4,
   },
-  button: {
-    width:'48%',
-    alignSelf:'center'
+
+  rowGroup: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    width: "90%",
+    alignSelf: "center",
+  },
+
+  rowBtns: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    width: "90%",
+    alignSelf: "center",
+    marginTop: 20,
+  },
+
+  btnSmall: {
+    width: "48%",
+    alignSelf: "center",
   },
 });

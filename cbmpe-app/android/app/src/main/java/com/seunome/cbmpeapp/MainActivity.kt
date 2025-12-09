@@ -1,4 +1,4 @@
-package com.cbmpeapp
+package com.seunome.cbmpeapp
 
 import android.os.Build
 import android.os.Bundle

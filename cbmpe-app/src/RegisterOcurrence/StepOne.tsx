@@ -1,11 +1,19 @@
-import React, { useState } from "react";
-import { View, StyleSheet, ScrollView, Platform, TouchableWithoutFeedback, Image } from "react-native";
+import React, { useState, useEffect } from "react";
+import {
+  View,
+  StyleSheet,
+  ScrollView,
+  Platform,
+  TouchableWithoutFeedback,
+  Image,
+} from "react-native";
 import { Text, TextInput, Button, Appbar, Menu } from "react-native-paper";
 import { useForm, Controller } from "react-hook-form";
 import { yupResolver } from "@hookform/resolvers/yup";
 import * as yup from "yup";
 import DateTimePicker from "@react-native-community/datetimepicker";
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { MaterialCommunityIcons } from "@expo/vector-icons";
 
 const tiposOcorrencia = [
   { value: "Incendio", label: "Incêndio" },
@@ -29,7 +37,13 @@ export default function StepOne({ navigation }) {
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
 
-  const { control, handleSubmit, formState: { errors }, setValue, watch } = useForm({
+  const {
+    control,
+    handleSubmit,
+    formState: { errors },
+    setValue,
+    watch,
+  } = useForm({
     resolver: yupResolver(schema),
     defaultValues: {
       dataHora: "",
@@ -40,9 +54,28 @@ export default function StepOne({ navigation }) {
     },
   });
 
+  useEffect(() => {
+    AsyncStorage.getItem("stepOneData").then((saved) => {
+      if (saved) {
+        let data = JSON.parse(saved);
+        if (data.dataHora) setValue("dataHora", data.dataHora);
+        if (data.viatura) setValue("viatura", data.viatura);
+        if (data.tipoOcorrencia)
+          setValue("tipoOcorrencia", data.tipoOcorrencia);
+        if (data.agrupamentos) setValue("agrupamentos", data.agrupamentos);
+        if (data.local) setValue("local", data.local);
+      }
+    });
+  }, []);
+
+  const watchAll = watch();
+  useEffect(() => {
+    AsyncStorage.setItem("stepOneData", JSON.stringify(watchAll));
+  }, [watchAll]);
+
   function formatDateTime(date) {
     if (!date) return "";
-    const d = new Date(date);
+    let d = new Date(date);
     return (
       d.toLocaleDateString("pt-BR") +
       " " +
@@ -50,59 +83,75 @@ export default function StepOne({ navigation }) {
     );
   }
 
-  const handleDatePress = () => setShowDatePicker(true);
-  const onDateChange = (event, selectedDate) => {
+  function handleDatePress() {
+    setShowDatePicker(true);
+  }
+
+  function onDateChange(event, selectedDate) {
     setShowDatePicker(false);
     if (selectedDate) {
-      setValue("dataHora", selectedDate.toISOString(), { shouldValidate: true });
+      setValue("dataHora", selectedDate.toISOString(), {
+        shouldValidate: true,
+      });
       setShowTimePicker(true);
     }
-  };
-  const onTimeChange = (event, selectedTime) => {
+  }
+
+  function onTimeChange(event, selectedTime) {
     setShowTimePicker(false);
     if (selectedTime) {
-      const currentISO = watch("dataHora");
+      let currentISO = watch("dataHora");
       let dateObj = currentISO ? new Date(currentISO) : new Date();
       dateObj.setHours(selectedTime.getHours());
       dateObj.setMinutes(selectedTime.getMinutes());
       dateObj.setSeconds(0);
       setValue("dataHora", dateObj.toISOString(), { shouldValidate: true });
     }
-  };
+  }
 
-  // Aqui faz a navegação para a próxima tela
-  const onSubmit = (data) => {
-    navigation.navigate('StepTwo', { formData: data });
-  };
+  function onSubmit(data) {
+    AsyncStorage.setItem("stepOneData", JSON.stringify(data));
+    navigation.navigate("StepTwo", { formData: data });
+  }
 
   return (
-    <View style={styles.container}>
+    <View style={styles.mainBox}>
       <Appbar.Header>
         <Image
-            source={require('../img/logo.png')} 
-            style={{ width: 75, height: 40, marginLeft: 10 }}
-            resizeMode="contain"
+          source={require("../img/logo.png")}
+          style={{ width: 75, height: 40, marginLeft: 10 }}
+          resizeMode="contain"
         />
       </Appbar.Header>
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <Text style={[styles.title, { fontSize: 24 }]}>Registro de Ocorrência</Text>
-        <View style={styles.formCard}>
-          <View style={styles.redBar} />
-          <View style={styles.stepRow}>
-            <MaterialCommunityIcons name="progress-clock" size={22} color="#E6003A" style={{ marginRight: 8 }} />
-            <Text style={styles.stepText}>1 / 5 • Dados principais</Text>
+      <ScrollView
+        contentContainerStyle={styles.scrollInside}
+        showsVerticalScrollIndicator={false}
+      >
+        <Text style={[styles.bigTitle, { fontSize: 24 }]}>
+          Registro de Ocorrência
+        </Text>
+        <View style={styles.boxForm}>
+          <View style={styles.redLineTop} />
+          <View style={styles.stepHeaderRow}>
+            <MaterialCommunityIcons
+              name="progress-clock"
+              size={22}
+              color="#E6003A"
+              style={{ marginRight: 8 }}
+            />
+            <Text style={styles.stepTextSmall}>1 / 5 • Dados principais</Text>
           </View>
           <Controller
             control={control}
             name="dataHora"
             render={({ field: { value }, fieldState: { error } }) => (
-              <View style={styles.inputWrapper}>
+              <View style={styles.boxInputAll}>
                 <TouchableWithoutFeedback onPress={handleDatePress}>
                   <View pointerEvents="box-only">
                     <TextInput
                       label="Data e hora*"
                       value={value ? formatDateTime(value) : ""}
-                      style={styles.input}
+                      style={styles.inputField}
                       editable={false}
                       right={<TextInput.Icon icon="calendar" />}
                       placeholder="Escolha a data e hora"
@@ -127,7 +176,8 @@ export default function StepOne({ navigation }) {
                     locale="pt-BR"
                   />
                 )}
-                {error && <Text style={styles.error}>{error.message}</Text>}
+
+                {error && <Text style={styles.textError}>{error.message}</Text>}
               </View>
             )}
           />
@@ -135,14 +185,14 @@ export default function StepOne({ navigation }) {
             control={control}
             name="viatura"
             render={({ field: { value, onChange }, fieldState: { error } }) => (
-              <View style={styles.inputWrapper}>
+              <View style={styles.boxInputAll}>
                 <TextInput
                   label="Viatura*"
                   value={value}
                   onChangeText={onChange}
-                  style={styles.input}
+                  style={styles.inputField}
                 />
-                {error && <Text style={styles.error}>{error.message}</Text>}
+                {error && <Text style={styles.textError}>{error.message}</Text>}
               </View>
             )}
           />
@@ -150,13 +200,13 @@ export default function StepOne({ navigation }) {
             control={control}
             name="tipoOcorrencia"
             render={({ field: { value }, fieldState: { error } }) => (
-              <View style={styles.inputWrapper}>
+              <View style={styles.boxInputAll}>
                 <TouchableWithoutFeedback onPress={() => setShowMenu(true)}>
                   <View pointerEvents="box-only">
                     <TextInput
                       label="Tipo de Ocorrência*"
                       value={value}
-                      style={styles.input}
+                      style={styles.inputField}
                       editable={false}
                       right={<TextInput.Icon icon="menu-down" />}
                       placeholder="Selecione o tipo de ocorrência"
@@ -166,21 +216,24 @@ export default function StepOne({ navigation }) {
                 <Menu
                   visible={showMenu}
                   onDismiss={() => setShowMenu(false)}
-                  anchor={{ x: 0, y: 0 }} 
+                  anchor={{ x: 0, y: 0 }}
                   style={{ marginTop: 48 }}
                 >
                   {tiposOcorrencia.map((item) => (
                     <Menu.Item
                       key={item.value}
                       onPress={() => {
-                        setValue("tipoOcorrencia", item.label, { shouldValidate: true });
+                        setValue("tipoOcorrencia", item.label, {
+                          shouldValidate: true,
+                        });
                         setShowMenu(false);
                       }}
                       title={item.label}
                     />
                   ))}
                 </Menu>
-                {error && <Text style={styles.error}>{error.message}</Text>}
+
+                {error && <Text style={styles.textError}>{error.message}</Text>}
               </View>
             )}
           />
@@ -188,12 +241,12 @@ export default function StepOne({ navigation }) {
             control={control}
             name="agrupamentos"
             render={({ field: { value, onChange } }) => (
-              <View style={styles.inputWrapper}>
+              <View style={styles.boxInputAll}>
                 <TextInput
                   label="Agrupamentos"
                   value={value}
                   onChangeText={onChange}
-                  style={styles.input}
+                  style={styles.inputField}
                 />
               </View>
             )}
@@ -202,18 +255,22 @@ export default function StepOne({ navigation }) {
             control={control}
             name="local"
             render={({ field: { value, onChange }, fieldState: { error } }) => (
-              <View style={styles.inputWrapper}>
+              <View style={styles.boxInputAll}>
                 <TextInput
                   label="Local*"
                   value={value}
                   onChangeText={onChange}
-                  style={styles.input}
+                  style={styles.inputField}
                 />
-                {error && <Text style={styles.error}>{error.message}</Text>}
+                {error && <Text style={styles.textError}>{error.message}</Text>}
               </View>
             )}
           />
-          <Button mode="contained" style={styles.button} onPress={handleSubmit(onSubmit)}>
+          <Button
+            mode="contained"
+            style={styles.btnNext}
+            onPress={handleSubmit(onSubmit)}
+          >
             Continuar
           </Button>
         </View>
@@ -223,19 +280,20 @@ export default function StepOne({ navigation }) {
 }
 
 const styles = StyleSheet.create({
-  container: {
+  mainBox: {
     flex: 1,
     backgroundColor: "#F6F7FA",
   },
-  content: {
+  scrollInside: {
     flexGrow: 1,
     padding: 20,
     justifyContent: "center",
-    alignItems: 'center',
+    alignItems: "center",
   },
-  formCard: {
-    width: '100%',
-    backgroundColor: '#fff',
+
+  boxForm: {
+    width: "100%",
+    backgroundColor: "#fff",
     borderRadius: 8,
     marginTop: 16,
     paddingBottom: 24,
@@ -250,54 +308,60 @@ const styles = StyleSheet.create({
         elevation: 4,
       },
     }),
-    position: 'relative',
-    overflow: 'hidden',
+    position: "relative",
+    overflow: "hidden",
   },
-  redBar: {
+  redLineTop: {
     height: 4,
-    backgroundColor: '#E6003A',
-    width: '100%',
-    position: 'absolute',
+    backgroundColor: "#E6003A",
+    width: "100%",
+    position: "absolute",
     top: 0,
     left: 0,
     zIndex: 2,
   },
-  stepRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+
+  stepHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
     marginTop: 16,
     marginBottom: 16,
     marginLeft: 16,
-    alignSelf: 'flex-start',
   },
-  title: {
+
+  bigTitle: {
     fontSize: 22,
     fontWeight: "bold",
     marginBottom: 20,
-    alignSelf:'flex-start'
+    alignSelf: "flex-start",
   },
-  stepText: {
+
+  stepTextSmall: {
     fontSize: 14,
     color: "#444",
-    fontWeight:'500'
+    fontWeight: "500",
   },
-  inputWrapper: {
+
+  boxInputAll: {
     width: "90%",
     marginBottom: 12,
-    alignSelf:'center'
+    alignSelf: "center",
   },
-  input: {
+
+  inputField: {
     backgroundColor: "#fff",
   },
-  error: {
+
+  textError: {
     color: "#E6003A",
     fontSize: 13,
     marginTop: 4,
   },
-  button: {
+
+  btnNext: {
     marginTop: 20,
     backgroundColor: "#E6003A",
     width: "90%",
-    alignSelf:'center'
+    alignSelf: "center",
   },
 });

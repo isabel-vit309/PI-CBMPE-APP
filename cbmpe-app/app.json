@@ -1,7 +1,28 @@
 {
   "expo": {
-    "name": "cbmpe-app",
+    "name": "SIGO",
     "slug": "cbmpe-app",
-    "version": "1.0.0"
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.seunome.cbmpeapp"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#ffffff"
+      },
+      "package": "com.seunome.cbmpeapp"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    }
   }
 }

@@ -1,4 +1,4 @@
-package com.cbmpeapp
+package com.seunome.cbmpeapp
 
 import android.app.Application
 import android.content.res.Configuration
