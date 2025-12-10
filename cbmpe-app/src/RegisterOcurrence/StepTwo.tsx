@@ -8,12 +8,13 @@ import {
   Image,
 } from "react-native";
 import { Text, TextInput, Button, Appbar, Menu } from "react-native-paper";
-import { useForm, Controller } from "react-hook-form";
+import { useForm, Controller, SubmitHandler } from "react-hook-form";
 import { yupResolver } from "@hookform/resolvers/yup";
 import * as yup from "yup";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import * as Location from "expo-location";
+import { useRoute, RouteProp } from "@react-navigation/native";
 
 const situacoes = [
   { label: "Pendente", value: "Pendente" },
@@ -21,7 +22,35 @@ const situacoes = [
   { label: "Finalizada", value: "Finalizada" },
 ];
 
-const schema = yup.object({
+interface StepTwoFormData {
+  recursosUtilizados: string;
+  enderecoOcorrencia: string;
+  descricaoCaso: string;
+  numeroVitimas: string;
+  situacaoFinal: string;
+  latitude?: number;
+  longitude?: number;
+}
+
+interface Ocorrencia {
+  id?: number;
+  recursosUtilizados?: string;
+  enderecoOcorrencia?: string;
+  descricaoCaso?: string;
+  numeroVitimas?: string;
+  situacaoFinal?: string;
+  latitude?: number;
+  longitude?: number;
+}
+
+type RootStackParamList = {
+  StepTwo: { ocorrencia?: Ocorrencia };
+  StepThree: { formData: StepTwoFormData };
+};
+
+type StepTwoRouteProp = RouteProp<RootStackParamList, "StepTwo">;
+
+const schema: yup.ObjectSchema<StepTwoFormData> = yup.object({
   recursosUtilizados: yup
     .string()
     .required("Recursos utilizados é obrigatório"),
@@ -31,15 +60,23 @@ const schema = yup.object({
   descricaoCaso: yup.string().required("Descrição do caso é obrigatória"),
   numeroVitimas: yup
     .string()
-    .typeError("Número de vítimas deve ser um número")
-    .min(0, "Não pode ser negativo")
+    .matches(/^\d+$/, "Número de vítimas deve ser um número")
     .required("Número de vítimas é obrigatório"),
   situacaoFinal: yup.string().required("Situação final é obrigatória"),
+  latitude: yup.number().optional(),
+  longitude: yup.number().optional(),
 });
 
-export default function StepTwo({ navigation }) {
+export default function StepTwo({ navigation }: any) {
+  const route = useRoute<StepTwoRouteProp>();
+  const ocorrenciaEdit = route.params?.ocorrencia;
+
   const [menuVisible, setMenuVisible] = useState(false);
   const [loadingEndereco, setLoadingEndereco] = useState(false);
+  const [currentLocation, setCurrentLocation] = useState<{
+    latitude: number;
+    longitude: number;
+  } | null>(null);
 
   const {
     control,
@@ -47,28 +84,29 @@ export default function StepTwo({ navigation }) {
     formState: { errors },
     setValue,
     watch,
-  } = useForm({
-    resolver: yupResolver(schema),
+  } = useForm<StepTwoFormData>({
+    resolver: yupResolver(schema) as any,
     defaultValues: {
-      recursosUtilizados: "",
-      enderecoOcorrencia: "",
-      descricaoCaso: "",
-      numeroVitimas: "",
-      situacaoFinal: "",
+      recursosUtilizados: ocorrenciaEdit?.recursosUtilizados || "",
+      enderecoOcorrencia: ocorrenciaEdit?.enderecoOcorrencia || "",
+      descricaoCaso: ocorrenciaEdit?.descricaoCaso || "",
+      numeroVitimas: ocorrenciaEdit?.numeroVitimas || "",
+      situacaoFinal: ocorrenciaEdit?.situacaoFinal || "",
+      latitude: ocorrenciaEdit?.latitude,
+      longitude: ocorrenciaEdit?.longitude,
     },
   });
 
   useEffect(() => {
     AsyncStorage.getItem("stepTwoData").then((saved) => {
-      if (saved) {
-        let data = JSON.parse(saved);
-        if (data.recursosUtilizados)
-          setValue("recursosUtilizados", data.recursosUtilizados);
-        if (data.enderecoOcorrencia)
-          setValue("enderecoOcorrencia", data.enderecoOcorrencia);
-        if (data.descricaoCaso) setValue("descricaoCaso", data.descricaoCaso);
-        if (data.numeroVitimas) setValue("numeroVitimas", data.numeroVitimas);
-        if (data.situacaoFinal) setValue("situacaoFinal", data.situacaoFinal);
+      if (saved && !ocorrenciaEdit) {
+        const data: Partial<StepTwoFormData> = JSON.parse(saved);
+        Object.keys(data).forEach((key) => {
+          setValue(
+            key as keyof StepTwoFormData,
+            data[key as keyof StepTwoFormData] || ""
+          );
+        });
       }
     });
   }, []);
@@ -78,51 +116,108 @@ export default function StepTwo({ navigation }) {
     AsyncStorage.setItem("stepTwoData", JSON.stringify(watchAll));
   }, [watchAll]);
 
-  function onSubmit(data) {
-    AsyncStorage.setItem("stepTwoData", JSON.stringify(data));
-    navigation.navigate("StepThree", { formData: data });
-  }
-
-  function handleBack() {
-    navigation.goBack();
-  }
-
-  function handleEnderecoPress() {
+  const getCurrentLocation = async () => {
     setLoadingEndereco(true);
-    Location.requestForegroundPermissionsAsync().then(({ status }) => {
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== "granted") {
         alert("Permissão de localização negada!");
         setLoadingEndereco(false);
+        return null;
+      }
+      const location = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.High,
+      });
+
+      const { latitude, longitude } = location.coords;
+      setCurrentLocation({ latitude, longitude });
+      setValue("latitude", latitude, { shouldValidate: false });
+      setValue("longitude", longitude, { shouldValidate: false });
+
+      const [address] = await Location.reverseGeocodeAsync({
+        latitude,
+        longitude,
+      });
+
+      if (address) {
+        const parts: string[] = [];
+
+        if (address.street) parts.push(address.street);
+        if (address.name) parts.push(address.name);
+        if (address.streetNumber) parts.push(address.streetNumber);
+        if (address.subregion) parts.push(address.subregion);
+        if (address.city) parts.push(address.city);
+        if (address.region) parts.push(address.region);
+        if (address.postalCode) parts.push(address.postalCode);
+        if (address.country) parts.push(address.country);
+
+        const enderecoFormatado =
+          parts.length > 0
+            ? parts.join(", ")
+            : `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
+
+        setValue("enderecoOcorrencia", enderecoFormatado, {
+          shouldValidate: true,
+        });
+
+        return { latitude, longitude, address: enderecoFormatado };
+      }
+    } catch (error) {
+      alert("Erro ao obter localização. Tente novamente.");
+    } finally {
+      setLoadingEndereco(false);
+    }
+    return null;
+  };
+
+  const handleEnderecoPress = async () => {
+    const locationData = await getCurrentLocation();
+    if (locationData) {
+      alert(
+        `📍 Localização capturada!\n\nLatitude: ${locationData.latitude.toFixed(
+          6
+        )}\nLongitude: ${locationData.longitude.toFixed(6)}`
+      );
+    }
+  };
+
+  const onSubmit: SubmitHandler<StepTwoFormData> = async (data) => {
+    try {
+      if (!data.latitude || !data.longitude) {
+        const locationData = await getCurrentLocation();
+        if (locationData) {
+          data.latitude = locationData.latitude;
+          data.longitude = locationData.longitude;
+
+          if (!data.enderecoOcorrencia && locationData.address) {
+            data.enderecoOcorrencia = locationData.address;
+          }
+        } else {
+          alert("Não foi possível obter a localização.");
+        }
+      }
+
+      if (!data.enderecoOcorrencia) {
+        alert("Por favor, informe o endereço da ocorrência.");
         return;
       }
-      Location.getCurrentPositionAsync({})
-        .then((location) => {
-          Location.reverseGeocodeAsync({
-            latitude: location.coords.latitude,
-            longitude: location.coords.longitude,
-          })
-            .then(([address]) => {
-              if (address) {
-                const enderecoFormatado = `${address.street || ""}, ${
-                  address.subregion || ""
-                } - ${address.city || ""}, ${address.region || ""}`;
-                setValue("enderecoOcorrencia", enderecoFormatado, {
-                  shouldValidate: true,
-                });
-              }
-              setLoadingEndereco(false);
-            })
-            .catch(() => {
-              alert("Erro ao obter endereço!");
-              setLoadingEndereco(false);
-            });
-        })
-        .catch(() => {
-          alert("Erro ao obter localização!");
-          setLoadingEndereco(false);
-        });
-    });
-  }
+
+      await AsyncStorage.setItem("stepTwoData", JSON.stringify(data));
+
+      if (data.latitude && data.longitude) {
+      } else {
+        console.warn(" Aviso: Coordenadas não capturadas");
+      }
+
+      navigation.navigate("StepThree", { formData: data });
+    } catch (error) {
+      alert("Erro ao processar localização. Tente novamente.");
+    }
+  };
+
+  const handleBack = () => {
+    navigation.goBack();
+  };
 
   return (
     <View style={styles.bigScreen}>
@@ -152,6 +247,29 @@ export default function StepTwo({ navigation }) {
             <Text style={styles.smallStepText}>
               2 / 5 • Dados complementares
             </Text>
+          </View>
+          <View style={styles.locationButtonContainer}>
+            <Button
+              mode="outlined"
+              onPress={handleEnderecoPress}
+              loading={loadingEndereco}
+              icon="map-marker"
+              style={styles.locationButton}
+              textColor="#E6003A"
+            >
+              {loadingEndereco
+                ? "Obtendo localização..."
+                : "Usar minha localização atual"}
+            </Button>
+
+            {currentLocation && (
+              <View style={styles.coordinatesContainer}>
+                <Text style={styles.coordinatesText}>
+                  📍 Lat: {currentLocation.latitude.toFixed(6)}, Long:{" "}
+                  {currentLocation.longitude.toFixed(6)}
+                </Text>
+              </View>
+            )}
           </View>
           <View style={styles.rowGroup}>
             <Controller
@@ -188,7 +306,6 @@ export default function StepTwo({ navigation }) {
                         style={styles.inputBox}
                         editable={false}
                         right={<TextInput.Icon icon="menu-down" />}
-                        pointerEvents="none"
                       />
                     </View>
                   </TouchableWithoutFeedback>
@@ -236,23 +353,20 @@ export default function StepTwo({ navigation }) {
             name="enderecoOcorrencia"
             render={({ field: { value, onChange }, fieldState: { error } }) => (
               <View style={styles.boxSpace}>
-                <TouchableWithoutFeedback onPress={handleEnderecoPress}>
-                  <View pointerEvents="box-only">
-                    <TextInput
-                      label="Endereço da ocorrência*"
-                      value={value}
-                      onChangeText={onChange}
-                      style={styles.inputBox}
-                      editable={false}
-                      right={
-                        <TextInput.Icon
-                          icon={loadingEndereco ? "loading" : "map-marker"}
-                        />
-                      }
-                      placeholder="Clique para preencher automaticamente"
+                <TextInput
+                  label="Endereço da ocorrência*"
+                  value={value}
+                  onChangeText={onChange}
+                  style={styles.inputBox}
+                  multiline
+                  numberOfLines={2}
+                  right={
+                    <TextInput.Icon
+                      icon={loadingEndereco ? "loading" : "map-marker"}
+                      onPress={handleEnderecoPress}
                     />
-                  </View>
-                </TouchableWithoutFeedback>
+                  }
+                />
                 {error && <Text style={styles.errTiny}>{error.message}</Text>}
               </View>
             )}
@@ -298,18 +412,13 @@ export default function StepTwo({ navigation }) {
 }
 
 const styles = StyleSheet.create({
-  bigScreen: {
-    flex: 1,
-    backgroundColor: "#F6F7FA",
-  },
-
+  bigScreen: { flex: 1, backgroundColor: "#F6F7FA" },
   allContent: {
     flexGrow: 1,
     padding: 20,
     justifyContent: "center",
     alignItems: "center",
   },
-
   whiteBox: {
     width: "100%",
     backgroundColor: "#fff",
@@ -323,14 +432,11 @@ const styles = StyleSheet.create({
         shadowOpacity: 0.12,
         shadowRadius: 6,
       },
-      android: {
-        elevation: 4,
-      },
+      android: { elevation: 4 },
     }),
     position: "relative",
     overflow: "hidden",
   },
-
   redLine: {
     height: 4,
     backgroundColor: "#E6003A",
@@ -340,7 +446,6 @@ const styles = StyleSheet.create({
     left: 0,
     zIndex: 2,
   },
-
   topStepRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -349,43 +454,23 @@ const styles = StyleSheet.create({
     marginLeft: 16,
     alignSelf: "flex-start",
   },
-
-  smallStepText: {
-    fontSize: 14,
-    color: "#444",
-    fontWeight: "500",
-  },
-
+  smallStepText: { fontSize: 14, color: "#444", fontWeight: "500" },
   bigTitle: {
     fontSize: 22,
     fontWeight: "bold",
     marginBottom: 20,
     alignSelf: "flex-start",
   },
-
-  boxSpace: {
-    width: "90%",
-    marginBottom: 12,
-    alignSelf: "center",
-  },
-
-  inputBox: {
-    backgroundColor: "#fff",
-  },
-
-  errTiny: {
-    color: "#E6003A",
-    fontSize: 13,
-    marginTop: 4,
-  },
-
+  boxSpace: { width: "90%", marginBottom: 12, alignSelf: "center" },
+  inputBox: { backgroundColor: "#fff" },
+  errTiny: { color: "#E6003A", fontSize: 13, marginTop: 4 },
   rowGroup: {
     flexDirection: "row",
     justifyContent: "space-between",
     width: "90%",
     alignSelf: "center",
+    marginTop: 10,
   },
-
   rowBtns: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -393,9 +478,25 @@ const styles = StyleSheet.create({
     alignSelf: "center",
     marginTop: 20,
   },
-
-  btnSmall: {
-    width: "48%",
+  btnSmall: { width: "48%", alignSelf: "center" },
+  locationButtonContainer: {
+    width: "90%",
     alignSelf: "center",
+    marginBottom: 20,
+    marginTop: 10,
+  },
+  locationButton: {
+    borderColor: "#E6003A",
+  },
+  coordinatesContainer: {
+    marginTop: 8,
+    padding: 8,
+    backgroundColor: "#f0f0f0",
+    borderRadius: 6,
+  },
+  coordinatesText: {
+    fontSize: 12,
+    color: "#666",
+    textAlign: "center",
   },
 });

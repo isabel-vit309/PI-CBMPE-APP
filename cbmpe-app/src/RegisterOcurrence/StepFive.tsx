@@ -61,14 +61,33 @@ export default function StepFive({ navigation }) {
     loadData();
   }, []);
 
-    async function handleFinish() {
+  const limparFormulario = async () => {
+    try {
+      await AsyncStorage.multiRemove([
+        "stepOneData",
+        "stepTwoData",
+        "stepThreeData",
+        "stepFourData",
+      ]);
+
+      setStepOne({});
+      setStepTwo({});
+      setStepThree({});
+      setStepFour({});
+
+      return true;
+    } catch (error) {
+      return false;
+    }
+  };
+
+  async function handleFinish() {
     setLoading(true);
     try {
-      
       let token = await AsyncStorage.getItem("token");
-      
+
       console.log("Token bruto:", token);
-      
+
       if (!token || token === "" || token === "null") {
         Alert.alert("Sessão expirada", "Faça login novamente.");
         await AsyncStorage.removeItem("token");
@@ -76,8 +95,7 @@ export default function StepFive({ navigation }) {
         setLoading(false);
         return;
       }
-      
-      
+
       token = token.trim();
       if (token.startsWith('"') && token.endsWith('"')) {
         token = token.slice(1, -1);
@@ -85,10 +103,9 @@ export default function StepFive({ navigation }) {
       if (token.startsWith("Bearer ")) {
         token = token.slice(7);
       }
-      
+
       console.log("Token limpo:", token.substring(0, 30) + "...");
-      
-            
+
       const ocorrenciaData = {
         viatura: stepOne.viatura,
         grupamento: stepOne.agrupamentos,
@@ -106,7 +123,10 @@ export default function StepFive({ navigation }) {
 
       console.log("Dados enviados:", JSON.stringify(ocorrenciaData, null, 2));
       console.log("URL:", `${VITE_API_URL}/ocorrencias`);
-      console.log("Header Authorization:", `Bearer ${token.substring(0, 20)}...`);
+      console.log(
+        "Header Authorization:",
+        `Bearer ${token.substring(0, 20)}...`
+      );
 
       const response = await axios.post(
         `${VITE_API_URL}/ocorrencias`,
@@ -120,17 +140,21 @@ export default function StepFive({ navigation }) {
         }
       );
 
-      console.log("Resposta da API:", response.data);
+      const limpezaOk = await limparFormulario();
 
-      await AsyncStorage.multiRemove([
-        "stepOneData",
-        "stepTwoData",
-        "stepThreeData",
-        "stepFourData",
-      ]);
-
-      Alert.alert("Sucesso", "Ocorrência registrada com sucesso!");
-      navigation.navigate("StepSix");
+      if (limpezaOk) {
+        Alert.alert(
+          "✅ Sucesso!",
+          "Ocorrência registrada e formulário limpo.",
+          [{ text: "OK", onPress: () => navigation.navigate("StepSix") }]
+        );
+      } else {
+        Alert.alert(
+          "⚠️ Atenção",
+          "Ocorrência registrada, mas houve um problema ao limpar o formulário.",
+          [{ text: "OK", onPress: () => navigation.navigate("StepSix") }]
+        );
+      }
     } catch (error) {
       console.error("Erro completo:", {
         status: error.response?.status,
@@ -141,10 +165,7 @@ export default function StepFive({ navigation }) {
 
       if (error.response) {
         if (error.response.status === 401) {
-          Alert.alert(
-            "Token expirado",
-            "Faça login novamente para continuar."
-          );
+          Alert.alert("Token expirado", "Faça login novamente para continuar.");
           await AsyncStorage.removeItem("token");
           navigation.navigate("Login");
         } else if (error.response.status === 403) {
@@ -164,7 +185,10 @@ export default function StepFive({ navigation }) {
           );
         }
       } else if (error.request) {
-        Alert.alert("Erro de conexão", "Não foi possível contactar o servidor.");
+        Alert.alert(
+          "Erro de conexão",
+          "Não foi possível contactar o servidor."
+        );
       } else {
         Alert.alert("Erro", error.message);
       }
@@ -241,7 +265,7 @@ export default function StepFive({ navigation }) {
           loading={loading}
           disabled={loading}
         >
-          Finalizar
+          Finalizar e Limpar Formulário
         </Button>
       </ScrollView>
     </SafeAreaView>
@@ -279,6 +303,6 @@ const styles = StyleSheet.create({
     marginTop: 20,
     backgroundColor: "#E6003A",
     alignSelf: "center",
-    width: "80%",
+    width: "90%",
   },
 });

@@ -1,13 +1,21 @@
-import React, { useState, useEffect } from "react";
+import React, { useEffect } from "react";
 import { View, StyleSheet, ScrollView, Platform, Image } from "react-native";
 import { Text, TextInput, Button, Appbar } from "react-native-paper";
-import { useForm, Controller } from "react-hook-form";
+import { useForm, Controller, SubmitHandler } from "react-hook-form";
 import { yupResolver } from "@hookform/resolvers/yup";
 import * as yup from "yup";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 
-const schema = yup.object({
+type StepFourFormData = {
+  nome: string;
+  codigoId: string;
+  cpf: string;
+  telefone: string;
+  descricaoCaso: string;
+};
+
+const schema: yup.ObjectSchema<StepFourFormData> = yup.object({
   nome: yup.string().required("Nome é obrigatório"),
   codigoId: yup.string().required("Código de ID é obrigatório"),
   cpf: yup.string().required("CPF é obrigatório"),
@@ -15,15 +23,15 @@ const schema = yup.object({
   descricaoCaso: yup.string().required("Descrição do caso é obrigatória"),
 });
 
-export default function StepFour({ navigation }) {
+export default function StepFour({ navigation }: any) {
   const {
     control,
     handleSubmit,
     formState: { errors },
     setValue,
     watch,
-  } = useForm({
-    resolver: yupResolver(schema),
+  } = useForm<StepFourFormData>({
+    resolver: yupResolver(schema) as any, // ⚠️ cast para forçar compatibilidade
     defaultValues: {
       nome: "",
       codigoId: "",
@@ -33,32 +41,47 @@ export default function StepFour({ navigation }) {
     },
   });
 
+  // Carregar dados salvos (modo edição)
   useEffect(() => {
-    AsyncStorage.getItem("stepFourData").then((saved) => {
-      if (saved) {
-        let data = JSON.parse(saved);
-        if (data.nome) setValue("nome", data.nome);
-        if (data.codigoId) setValue("codigoId", data.codigoId);
-        if (data.cpf) setValue("cpf", data.cpf);
-        if (data.telefone) setValue("telefone", data.telefone);
-        if (data.descricaoCaso) setValue("descricaoCaso", data.descricaoCaso);
+    const loadData = async () => {
+      try {
+        const savedData = await AsyncStorage.getItem("stepFourData");
+        if (savedData) {
+          const data: StepFourFormData = JSON.parse(savedData);
+          setValue("nome", data.nome || "");
+          setValue("codigoId", data.codigoId || "");
+          setValue("cpf", data.cpf || "");
+          setValue("telefone", data.telefone || "");
+          setValue("descricaoCaso", data.descricaoCaso || "");
+        }
+      } catch (error) {
+        console.log("Erro ao carregar dados do StepFour:", error);
       }
-    });
-  }, []);
+    };
+    loadData();
+  }, [setValue]);
 
+  // Salvar alterações automaticamente
   const watchAll = watch();
   useEffect(() => {
-    AsyncStorage.setItem("stepFourData", JSON.stringify(watchAll));
+    const saveData = async () => {
+      try {
+        await AsyncStorage.setItem("stepFourData", JSON.stringify(watchAll));
+      } catch (error) {
+        console.log("Erro ao salvar dados do StepFour:", error);
+      }
+    };
+    saveData();
   }, [watchAll]);
 
-  function onSubmit(data) {
+  const onSubmit: SubmitHandler<StepFourFormData> = (data) => {
     AsyncStorage.setItem("stepFourData", JSON.stringify(data));
     navigation.navigate("StepFive", { formData: data });
-  }
+  };
 
-  function handleBack() {
+  const handleBack = () => {
     navigation.goBack();
-  }
+  };
 
   return (
     <View style={styles.bigScreen}>
@@ -207,18 +230,13 @@ export default function StepFour({ navigation }) {
 }
 
 const styles = StyleSheet.create({
-  bigScreen: {
-    flex: 1,
-    backgroundColor: "#F6F7FA",
-  },
-
+  bigScreen: { flex: 1, backgroundColor: "#F6F7FA" },
   scrollStuff: {
     flexGrow: 1,
     padding: 20,
     justifyContent: "center",
     alignItems: "center",
   },
-
   cardBox: {
     width: "100%",
     backgroundColor: "#fff",
@@ -232,14 +250,11 @@ const styles = StyleSheet.create({
         shadowOpacity: 0.12,
         shadowRadius: 6,
       },
-      android: {
-        elevation: 4,
-      },
+      android: { elevation: 4 },
     }),
     position: "relative",
     overflow: "hidden",
   },
-
   topRedLine: {
     height: 4,
     backgroundColor: "#E6003A",
@@ -249,7 +264,6 @@ const styles = StyleSheet.create({
     left: 0,
     zIndex: 2,
   },
-
   progressRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -258,48 +272,23 @@ const styles = StyleSheet.create({
     marginLeft: 16,
     alignSelf: "flex-start",
   },
-
   bigTitle: {
     fontSize: 22,
     fontWeight: "bold",
     marginBottom: 20,
     alignSelf: "flex-start",
   },
-
-  progressText: {
-    fontSize: 14,
-    color: "#444",
-    fontWeight: "500",
-  },
-
+  progressText: { fontSize: 14, color: "#444", fontWeight: "500" },
   twoInputsRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     width: "90%",
     alignSelf: "center",
   },
-
-  smallInputBox: {
-    flex: 1,
-    marginHorizontal: 6,
-  },
-
-  fullInputBox: {
-    width: "90%",
-    marginBottom: 12,
-    alignSelf: "center",
-  },
-
-  inputThing: {
-    backgroundColor: "#fff",
-  },
-
-  errText: {
-    color: "#E6003A",
-    fontSize: 13,
-    marginTop: 4,
-  },
-
+  smallInputBox: { flex: 1, marginHorizontal: 6 },
+  fullInputBox: { width: "90%", marginBottom: 12, alignSelf: "center" },
+  inputThing: { backgroundColor: "#fff" },
+  errText: { color: "#E6003A", fontSize: 13, marginTop: 4 },
   btnsRow: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -307,9 +296,5 @@ const styles = StyleSheet.create({
     alignSelf: "center",
     marginTop: 20,
   },
-
-  btnSimple: {
-    width: "48%",
-    alignSelf: "center",
-  },
+  btnSimple: { width: "48%", alignSelf: "center" },
 });

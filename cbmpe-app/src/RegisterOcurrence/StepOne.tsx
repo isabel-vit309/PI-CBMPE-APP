@@ -8,14 +8,44 @@ import {
   Image,
 } from "react-native";
 import { Text, TextInput, Button, Appbar, Menu } from "react-native-paper";
-import { useForm, Controller } from "react-hook-form";
+import { useForm, Controller, SubmitHandler } from "react-hook-form";
 import { yupResolver } from "@hookform/resolvers/yup";
 import * as yup from "yup";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
+import { RouteProp, useRoute } from "@react-navigation/native";
 
-const tiposOcorrencia = [
+interface Ocorrencia {
+  id?: number;
+  dataHora?: string;
+  viatura?: string;
+  tipoOcorrencia?: string;
+  agrupamentos?: string;
+  local?: string;
+}
+
+interface TipoOcorrencia {
+  value: string;
+  label: string;
+}
+
+interface StepOneFormData {
+  dataHora: string;
+  viatura: string;
+  tipoOcorrencia: string;
+  agrupamentos: string;
+  local: string;
+}
+
+type RootStackParamList = {
+  StepOne: { ocorrencia?: Ocorrencia };
+  StepTwo: { formData: StepOneFormData };
+};
+
+type StepOneRouteProp = RouteProp<RootStackParamList, "StepOne">;
+
+const tiposOcorrencia: TipoOcorrencia[] = [
   { value: "Incendio", label: "Incêndio" },
   { value: "Alagamento", label: "Alagamento" },
   { value: "Deslizamento", label: "Deslizamento" },
@@ -24,58 +54,69 @@ const tiposOcorrencia = [
   { value: "Tempestade", label: "Tempestade" },
 ];
 
-const schema = yup.object({
+const schema: yup.ObjectSchema<StepOneFormData> = yup.object({
   dataHora: yup.string().required("Data e hora é obrigatória"),
   viatura: yup.string().required("Viatura é obrigatória"),
   tipoOcorrencia: yup.string().required("Selecione o tipo de ocorrência"),
-  agrupamentos: yup.string(),
+  agrupamentos: yup.string().notRequired(),
   local: yup.string().required("Local é obrigatório"),
 });
 
-export default function StepOne({ navigation }) {
+const locais = [
+  { value: "Rural", label: "Rural" },
+  { value: "Urbana", label: "Urbana" },
+];
+
+export default function StepOne({ navigation }: any) {
+  const route = useRoute<StepOneRouteProp>();
+  const ocorrenciaEdit = route.params?.ocorrencia;
+
   const [showMenu, setShowMenu] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
+  const [showLocalMenu, setShowLocalMenu] = useState(false);
+
+  const defaultFormValues: StepOneFormData = {
+    dataHora: ocorrenciaEdit?.dataHora || "",
+    viatura: ocorrenciaEdit?.viatura || "",
+    tipoOcorrencia: ocorrenciaEdit?.tipoOcorrencia || "",
+    agrupamentos: ocorrenciaEdit?.agrupamentos || "",
+    local: ocorrenciaEdit?.local || "",
+  };
 
   const {
     control,
     handleSubmit,
     formState: { errors },
     setValue,
+    reset,
     watch,
-  } = useForm({
-    resolver: yupResolver(schema),
-    defaultValues: {
-      dataHora: "",
-      viatura: "",
-      tipoOcorrencia: "",
-      agrupamentos: "",
-      local: "",
-    },
+  } = useForm<StepOneFormData>({
+    resolver: yupResolver(schema) as any,
+    defaultValues: defaultFormValues,
   });
 
   useEffect(() => {
-    AsyncStorage.getItem("stepOneData").then((saved) => {
-      if (saved) {
-        let data = JSON.parse(saved);
-        if (data.dataHora) setValue("dataHora", data.dataHora);
-        if (data.viatura) setValue("viatura", data.viatura);
-        if (data.tipoOcorrencia)
-          setValue("tipoOcorrencia", data.tipoOcorrencia);
-        if (data.agrupamentos) setValue("agrupamentos", data.agrupamentos);
-        if (data.local) setValue("local", data.local);
-      }
-    });
-  }, []);
+    if (ocorrenciaEdit) {
+      reset(defaultFormValues);
+    } else {
+      AsyncStorage.getItem("stepOneData").then((saved) => {
+        if (saved) {
+          const data: Partial<StepOneFormData> = JSON.parse(saved);
+          reset({ ...defaultFormValues, ...data });
+        }
+      });
+    }
+  }, [ocorrenciaEdit]);
 
   const watchAll = watch();
   useEffect(() => {
     AsyncStorage.setItem("stepOneData", JSON.stringify(watchAll));
   }, [watchAll]);
 
-  function formatDateTime(date) {
+  function formatDateTime(date: string | undefined) {
     if (!date) return "";
-    let d = new Date(date);
+    const d = new Date(date);
     return (
       d.toLocaleDateString("pt-BR") +
       " " +
@@ -87,7 +128,7 @@ export default function StepOne({ navigation }) {
     setShowDatePicker(true);
   }
 
-  function onDateChange(event, selectedDate) {
+  function onDateChange(event: any, selectedDate?: Date) {
     setShowDatePicker(false);
     if (selectedDate) {
       setValue("dataHora", selectedDate.toISOString(), {
@@ -97,11 +138,11 @@ export default function StepOne({ navigation }) {
     }
   }
 
-  function onTimeChange(event, selectedTime) {
+  function onTimeChange(event: any, selectedTime?: Date) {
     setShowTimePicker(false);
     if (selectedTime) {
-      let currentISO = watch("dataHora");
-      let dateObj = currentISO ? new Date(currentISO) : new Date();
+      const currentISO = watch("dataHora");
+      const dateObj = currentISO ? new Date(currentISO) : new Date();
       dateObj.setHours(selectedTime.getHours());
       dateObj.setMinutes(selectedTime.getMinutes());
       dateObj.setSeconds(0);
@@ -109,10 +150,10 @@ export default function StepOne({ navigation }) {
     }
   }
 
-  function onSubmit(data) {
+  const onSubmit: SubmitHandler<StepOneFormData> = (data) => {
     AsyncStorage.setItem("stepOneData", JSON.stringify(data));
     navigation.navigate("StepTwo", { formData: data });
-  }
+  };
 
   return (
     <View style={styles.mainBox}>
@@ -150,7 +191,7 @@ export default function StepOne({ navigation }) {
                   <View pointerEvents="box-only">
                     <TextInput
                       label="Data e hora*"
-                      value={value ? formatDateTime(value) : ""}
+                      value={formatDateTime(value)}
                       style={styles.inputField}
                       editable={false}
                       right={<TextInput.Icon icon="calendar" />}
@@ -176,7 +217,6 @@ export default function StepOne({ navigation }) {
                     locale="pt-BR"
                   />
                 )}
-
                 {error && <Text style={styles.textError}>{error.message}</Text>}
               </View>
             )}
@@ -232,7 +272,6 @@ export default function StepOne({ navigation }) {
                     />
                   ))}
                 </Menu>
-
                 {error && <Text style={styles.textError}>{error.message}</Text>}
               </View>
             )}
@@ -256,16 +295,42 @@ export default function StepOne({ navigation }) {
             name="local"
             render={({ field: { value, onChange }, fieldState: { error } }) => (
               <View style={styles.boxInputAll}>
-                <TextInput
-                  label="Local*"
-                  value={value}
-                  onChangeText={onChange}
-                  style={styles.inputField}
-                />
+                <TouchableWithoutFeedback
+                  onPress={() => setShowLocalMenu(true)}
+                >
+                  <View pointerEvents="box-only">
+                    <TextInput
+                      label="Local*"
+                      value={value}
+                      style={styles.inputField}
+                      editable={false}
+                      right={<TextInput.Icon icon="menu-down" />}
+                      placeholder="Selecione Rural ou Urbana"
+                    />
+                  </View>
+                </TouchableWithoutFeedback>
+                <Menu
+                  visible={showLocalMenu}
+                  onDismiss={() => setShowLocalMenu(false)}
+                  anchor={{ x: 0, y: 0 }}
+                  style={{ marginTop: 48 }}
+                >
+                  {locais.map((item) => (
+                    <Menu.Item
+                      key={item.value}
+                      title={item.label}
+                      onPress={() => {
+                        onChange(item.value);
+                        setShowLocalMenu(false);
+                      }}
+                    />
+                  ))}
+                </Menu>
                 {error && <Text style={styles.textError}>{error.message}</Text>}
               </View>
             )}
           />
+
           <Button
             mode="contained"
             style={styles.btnNext}
@@ -280,17 +345,13 @@ export default function StepOne({ navigation }) {
 }
 
 const styles = StyleSheet.create({
-  mainBox: {
-    flex: 1,
-    backgroundColor: "#F6F7FA",
-  },
+  mainBox: { flex: 1, backgroundColor: "#F6F7FA" },
   scrollInside: {
     flexGrow: 1,
     padding: 20,
     justifyContent: "center",
     alignItems: "center",
   },
-
   boxForm: {
     width: "100%",
     backgroundColor: "#fff",
@@ -304,9 +365,7 @@ const styles = StyleSheet.create({
         shadowOpacity: 0.12,
         shadowRadius: 6,
       },
-      android: {
-        elevation: 4,
-      },
+      android: { elevation: 4 },
     }),
     position: "relative",
     overflow: "hidden",
@@ -320,7 +379,6 @@ const styles = StyleSheet.create({
     left: 0,
     zIndex: 2,
   },
-
   stepHeaderRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -328,36 +386,16 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     marginLeft: 16,
   },
-
   bigTitle: {
     fontSize: 22,
     fontWeight: "bold",
     marginBottom: 20,
     alignSelf: "flex-start",
   },
-
-  stepTextSmall: {
-    fontSize: 14,
-    color: "#444",
-    fontWeight: "500",
-  },
-
-  boxInputAll: {
-    width: "90%",
-    marginBottom: 12,
-    alignSelf: "center",
-  },
-
-  inputField: {
-    backgroundColor: "#fff",
-  },
-
-  textError: {
-    color: "#E6003A",
-    fontSize: 13,
-    marginTop: 4,
-  },
-
+  stepTextSmall: { fontSize: 14, color: "#444", fontWeight: "500" },
+  boxInputAll: { width: "90%", marginBottom: 12, alignSelf: "center" },
+  inputField: { backgroundColor: "#fff" },
+  textError: { color: "#E6003A", fontSize: 13, marginTop: 4 },
   btnNext: {
     marginTop: 20,
     backgroundColor: "#E6003A",
